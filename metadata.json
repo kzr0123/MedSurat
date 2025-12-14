@@ -1,0 +1,5 @@
+{
+  "name": "MedSurat",
+  "description": "A comprehensive medical certificate issuance system featuring patient request flows, officer dashboards with AI-assisted drafting, PDF generation, and public verification.",
+  "requestFramePermissions": []
+}
