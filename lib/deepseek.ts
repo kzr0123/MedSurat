@@ -1,6 +1,6 @@
 import { CertificateType } from "../types/index";
 
-const API_KEY = (import.meta as any).env.VITE_DEEPSEEK_API_KEY || 'sk-bce8bd8abca2407f950c95b7a3c08af8';
+const API_KEY = (import.meta as any).env.VITE_DEEPSEEK_API_KEY;
 const API_URL = 'https://api.deepseek.com/chat/completions';
 
 export interface ChatMessage {
@@ -13,7 +13,10 @@ export const DeepSeekService = {
    * Generic chat completion method for DeepSeek
    */
   chat: async (messages: ChatMessage[]): Promise<string> => {
-    if (!API_KEY) throw new Error("DeepSeek API Key is missing");
+    if (!API_KEY) {
+      console.error("DeepSeek API Key is missing. Please set VITE_DEEPSEEK_API_KEY in .env");
+      return "Error: Konfigurasi AI belum lengkap (API Key Missing).";
+    }
 
     try {
       const response = await fetch(API_URL, {
@@ -80,6 +83,7 @@ export const DeepSeekService = {
       ]);
       return content;
     } catch (error) {
+      console.error(error);
       return "Gagal menghasilkan draft medis. Mohon periksa koneksi atau kuota API DeepSeek Anda.";
     }
   }

@@ -4,11 +4,11 @@ import { PatientRequest, CertificateType } from "../types/index";
 import { format } from "date-fns";
 import { id as localeId } from 'date-fns/locale';
 
-interface PDFGeneratorOptions {
-  returnBytes?: boolean;
+export interface PDFGeneratorOptions {
+  action?: 'download' | 'preview' | 'returnBytes';
 }
 
-export const generatePDF = async (request: PatientRequest, options: PDFGeneratorOptions = { returnBytes: false }): Promise<Uint8Array | void> => {
+export const generatePDF = async (request: PatientRequest, options: PDFGeneratorOptions = { action: 'download' }): Promise<Uint8Array | void> => {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
   const { width, height } = page.getSize();
@@ -50,7 +50,7 @@ export const generatePDF = async (request: PatientRequest, options: PDFGenerator
   else if (request.type === CertificateType.COMBINED) title = "SURAT KETERANGAN KESEHATAN & BEBAS NARKOBA";
 
   drawTextCentered(title, height - 140, 16, fontBold);
-  drawTextCentered(`No: ${request.certificateId || 'PENDING'}`, height - 160, 12, font);
+  drawTextCentered(`No: ${request.certificateId || 'DRAFT-PREVIEW'}`, height - 160, 12, font);
 
   // Patient Info
   let y = height - 200;
@@ -70,7 +70,7 @@ export const generatePDF = async (request: PatientRequest, options: PDFGenerator
   const fields = [
     { label: "Nama", value: request.fullName },
     { label: "NIK", value: request.nik },
-    { label: "Tanggal Lahir", value: format(new Date(request.dob), 'd MMMM yyyy', { locale: localeId }) },
+    { label: "Tanggal Lahir", value: request.dob ? format(new Date(request.dob), 'd MMMM yyyy', { locale: localeId }) : '-' },
     { label: "Alamat", value: request.address },
   ];
 
@@ -87,7 +87,7 @@ export const generatePDF = async (request: PatientRequest, options: PDFGenerator
   y -= 20;
 
   // Simple Word Wrap for Notes
-  const notes = request.doctorNotes || "-";
+  const notes = request.doctorNotes || "(Belum ada catatan dokter)";
   const words = notes.split(' ');
   let line = '';
   for (const word of words) {
@@ -126,7 +126,9 @@ export const generatePDF = async (request: PatientRequest, options: PDFGenerator
 
   // QR Code
   try {
-    const qrData = `${window.location.origin}/#/verify?id=${request.certificateId}`;
+    // If certificateId exists, use it. If not (draft), verify page will just fail but QR works visually.
+    const qrId = request.certificateId || 'DRAFT';
+    const qrData = `${window.location.origin}/#/verify?id=${qrId}`;
     const qrDataUrl = await QRCode.toDataURL(qrData);
     const qrImageBytes = await fetch(qrDataUrl).then(res => res.arrayBuffer());
     const qrImage = await pdfDoc.embedPng(qrImageBytes);
@@ -142,20 +144,33 @@ export const generatePDF = async (request: PatientRequest, options: PDFGenerator
   }
 
   page.drawText("Scan untuk Verifikasi", { x: 55, y: footerY - 80, size: 9, font });
-  page.drawText(request.certificateId || "PENDING", { x: 55, y: footerY - 92, size: 9, font: fontBold });
+  page.drawText(request.certificateId || "DRAFT", { x: 55, y: footerY - 92, size: 9, font: fontBold });
 
   const pdfBytes = await pdfDoc.save();
 
-  if (options.returnBytes) {
+  // Handling Output
+  if (options.action === 'returnBytes') {
     return pdfBytes;
   }
   
-  // Trigger Download
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `${request.certificateId || 'certificate'}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  const blobUrl = URL.createObjectURL(blob);
+
+  if (options.action === 'preview') {
+    // Open in new tab for preview
+    const win = window.open(blobUrl, '_blank');
+    if (!win) {
+      alert("Pop-up diblokir. Izinkan pop-up untuk melihat preview PDF.");
+    }
+  } else {
+    // Default: Download
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = `${request.certificateId || 'certificate'}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Cleanup
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  }
 };

@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/db';
+import { supabase } from '../lib/supabase';
 import { DeepSeekService } from '../lib/deepseek';
 import { generatePDF } from '../lib/pdfGenerator';
 import { EmailService } from '../lib/emailService';
 import { PatientRequest, RequestStatus, CertificateType } from '../types/index';
-import { ArrowLeft, Sparkles, Check, X, Printer, Mail, User, FileText, Calendar, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
-import { id as localeId } from 'date-fns/locale';
+import { ArrowLeft, Sparkles, Check, X, Printer, Mail, User, FileText, Calendar, Loader2, Eye, Download } from 'lucide-react';
 
 export const ProcessRequest: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -37,51 +36,80 @@ export const ProcessRequest: React.FC = () => {
     setGeneratingAI(false);
   };
 
-  const handleApprove = async () => {
-    if (!request) return;
-    setProcessing(true);
+  // Helper to create a temporary request object for preview/approval logic
+  const prepareRequestData = (isDraft: boolean = false) => {
+    if (!request) return null;
     
     const validFrom = new Date();
     const validUntil = new Date();
     validUntil.setDate(validFrom.getDate() + validDays);
+    
+    const certId = isDraft 
+        ? 'DRAFT-PREVIEW' 
+        : `MC-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
 
-    const certId = `MC-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+    return {
+        ...request,
+        doctorNotes: doctorNotes,
+        validFrom: validFrom.toISOString(),
+        validUntil: validUntil.toISOString(),
+        certificateId: certId,
+        status: isDraft ? request.status : RequestStatus.APPROVED
+    } as PatientRequest;
+  };
 
-    // 1. Prepare Data Object
+  const handlePreviewDraft = async () => {
+    const tempRequest = prepareRequestData(true);
+    if (tempRequest) {
+        await generatePDF(tempRequest, { action: 'preview' });
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!request) return;
+    setProcessing(true);
+    
+    const finalRequest = prepareRequestData(false);
+    if (!finalRequest) return;
+
+    // Only update fields that need to be saved
     const updatedRequestData: Partial<PatientRequest> = {
       status: RequestStatus.APPROVED,
       doctorNotes,
-      validFrom: validFrom.toISOString(),
-      validUntil: validUntil.toISOString(),
-      certificateId: certId
+      validFrom: finalRequest.validFrom,
+      validUntil: finalRequest.validUntil,
+      certificateId: finalRequest.certificateId
     };
 
     try {
-      // 2. Generate PDF Bytes (Don't download yet)
-      const pdfBytes = await generatePDF({ ...request, ...updatedRequestData } as PatientRequest, { returnBytes: true });
+      // 1. Generate PDF Bytes
+      const pdfBytes = await generatePDF(finalRequest, { action: 'returnBytes' });
       
-      // 3. Upload to Supabase Storage (if available and pdfBytes exists)
-      if (pdfBytes && (pdfBytes instanceof Uint8Array)) {
-         await db.uploadCertificate(certId, pdfBytes);
+      // 2. Upload to Supabase Storage
+      if (supabase && pdfBytes && (pdfBytes instanceof Uint8Array)) {
+         const publicUrl = await db.uploadCertificate(finalRequest.certificateId!, pdfBytes);
+         if (!publicUrl) {
+           throw new Error("Gagal mengunggah file PDF ke Storage. Mohon periksa koneksi internet.");
+         }
       }
 
-      // 4. Update DB
+      // 3. Update DB
       await db.updateRequest(request.id, updatedRequestData);
 
-      // 5. Send Email
-      const emailSent = await EmailService.sendApprovalEmail(request.email, request.fullName, certId);
+      // 4. Send Email
+      const emailSent = await EmailService.sendApprovalEmail(request.email, request.fullName, finalRequest.certificateId!);
       if (emailSent) {
         await db.updateRequest(request.id, { emailSent: true });
       }
 
-      // 6. Refresh Local State
+      // 5. Refresh
       const updated = await db.getRequestById(request.id);
       if (updated) setRequest(updated);
 
-      alert(`Permohonan Disetujui! Sertifikat telah dibuat dan diunggah.${emailSent ? ' Email telah dikirim ke pasien.' : ''}`);
-    } catch (error) {
+      alert(`Permohonan Disetujui! Sertifikat berhasil diterbitkan.`);
+    } catch (error: any) {
       console.error("Approval flow failed", error);
-      alert("Terjadi kesalahan saat memproses persetujuan.");
+      alert(`Gagal memproses persetujuan: ${error.message || 'Terjadi kesalahan sistem.'}`);
     } finally {
       setProcessing(false);
     }
@@ -92,16 +120,27 @@ export const ProcessRequest: React.FC = () => {
     if (!confirm('Apakah Anda yakin ingin menolak permohonan ini?')) return;
     
     setProcessing(true);
-    await db.updateRequest(request.id, { status: RequestStatus.REJECTED });
-    const updated = await db.getRequestById(request.id);
-    if (updated) setRequest(updated);
-    setProcessing(false);
+    try {
+      await db.updateRequest(request.id, { status: RequestStatus.REJECTED });
+      const updated = await db.getRequestById(request.id);
+      if (updated) setRequest(updated);
+    } catch (error) {
+      alert("Gagal menolak permohonan.");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleDownloadPDF = async () => {
     if (request) {
-       await generatePDF(request, { returnBytes: false });
+       await generatePDF(request, { action: 'download' });
     }
+  };
+  
+  const handlePreviewFinal = async () => {
+      if (request) {
+          await generatePDF(request, { action: 'preview' });
+      }
   };
 
   if (!request) return <div className="p-8 text-center text-slate-500">Memuat data...</div>;
@@ -117,7 +156,7 @@ export const ProcessRequest: React.FC = () => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
       {/* Patient Info Column */}
       <div className="lg:col-span-1 space-y-6">
         <button onClick={() => navigate('/officer/dashboard')} className="flex items-center text-slate-500 hover:text-blue-600 transition-colors font-medium">
@@ -241,9 +280,9 @@ export const ProcessRequest: React.FC = () => {
           </div>
 
           {/* Actions Footer */}
-          <div className="pt-8 mt-8 border-t border-slate-100 flex gap-4">
+          <div className="pt-8 mt-8 border-t border-slate-100">
             {request.status === RequestStatus.PENDING ? (
-              <>
+              <div className="flex gap-4">
                 <button 
                   onClick={handleReject}
                   disabled={processing}
@@ -251,6 +290,17 @@ export const ProcessRequest: React.FC = () => {
                 >
                   <X className="h-5 w-5 mr-2" /> Tolak
                 </button>
+                
+                {/* Preview Draft Button */}
+                <button 
+                  onClick={handlePreviewDraft}
+                  disabled={processing || !doctorNotes}
+                  className="flex-1 bg-slate-100 text-slate-700 hover:bg-slate-200 px-4 py-4 rounded-xl font-bold flex items-center justify-center transition-all disabled:opacity-50"
+                  title="Lihat Draft PDF"
+                >
+                  <Eye className="h-5 w-5 mr-2" /> Preview Draft
+                </button>
+
                 <button 
                   onClick={handleApprove}
                   disabled={processing || !doctorNotes}
@@ -263,19 +313,27 @@ export const ProcessRequest: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      <Check className="h-5 w-5 mr-2" /> Setujui & Terbitkan Surat
+                      <Check className="h-5 w-5 mr-2" /> Setujui & Terbit
                     </>
                   )}
                 </button>
-              </>
+              </div>
             ) : (
               <div className="w-full flex gap-4">
+                 <button 
+                  onClick={handlePreviewFinal}
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-4 rounded-xl font-bold flex items-center justify-center transition-all"
+                >
+                  <Eye className="h-5 w-5 mr-2" /> Lihat PDF
+                </button>
+
                 <button 
                   onClick={handleDownloadPDF}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-4 rounded-xl font-bold flex items-center justify-center transition-all shadow-lg shadow-blue-500/30"
+                  className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white px-4 py-4 rounded-xl font-bold flex items-center justify-center transition-all shadow-lg shadow-blue-500/30"
                 >
-                  <Printer className="h-5 w-5 mr-2" /> Unduh PDF
+                  <Download className="h-5 w-5 mr-2" /> Unduh PDF
                 </button>
+
                 {request.emailSent && (
                   <div className="flex items-center px-4 py-2 bg-green-50 text-green-700 rounded-xl border border-green-200 font-medium">
                     <Mail className="h-5 w-5 mr-2" /> Email Terkirim

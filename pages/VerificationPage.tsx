@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { db } from '../lib/db';
 import { PatientRequest } from '../types/index';
-import { ShieldCheck, AlertCircle, CheckCircle, Loader2, ArrowLeft, Search, Calendar, User, FileText, ExternalLink } from 'lucide-react';
+import { ShieldCheck, AlertCircle, CheckCircle, Loader2, ArrowLeft, Search, Calendar, User, FileText, ExternalLink, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
@@ -103,7 +103,7 @@ export const VerificationPage: React.FC = () => {
                 <h2 className="text-2xl font-bold text-green-700 mb-1">DOKUMEN VALID</h2>
                 <p className="text-slate-500 text-sm mb-8">Terverifikasi di database kami</p>
 
-                <div className="bg-slate-50 rounded-2xl p-6 text-left space-y-4 border border-slate-100 mb-8">
+                <div className="bg-slate-50 rounded-2xl p-6 text-left space-y-4 border border-slate-100 mb-8 shadow-sm">
                   <div className="flex items-start space-x-3">
                     <FileText className="h-5 w-5 text-slate-400 mt-0.5" />
                     <div>
@@ -133,7 +133,7 @@ export const VerificationPage: React.FC = () => {
 
                   <div className="pt-4 mt-2 border-t border-slate-200">
                     <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Nomor Sertifikat</span>
-                    <span className="font-mono text-sm bg-white border border-slate-200 px-2 py-1 rounded text-slate-700 block text-center break-all">
+                    <span className="font-mono text-sm bg-white border border-slate-200 px-2 py-1 rounded text-slate-700 block text-center break-all select-all">
                       {result.certificateId || result.id}
                     </span>
                   </div>
@@ -144,10 +144,10 @@ export const VerificationPage: React.FC = () => {
                       href={result.certificateUrl} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="flex items-center justify-center w-full px-4 py-2 mt-4 bg-blue-50 text-blue-700 rounded-xl text-sm font-bold border border-blue-200 hover:bg-blue-100 transition-colors"
+                      className="flex items-center justify-center w-full px-4 py-3 mt-4 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all"
                     >
                       <ExternalLink className="w-4 h-4 mr-2" />
-                      Lihat Dokumen Asli (PDF)
+                      Lihat File Asli (PDF)
                     </a>
                   )}
                 </div>
@@ -170,14 +170,15 @@ export const VerificationPage: React.FC = () => {
                 
                 <h2 className="text-2xl font-bold text-red-700 mb-2">DOKUMEN TIDAK VALID</h2>
                 <p className="text-slate-500 mb-8">
-                  Dokumen dengan ID tersebut tidak ditemukan.
+                  Dokumen dengan ID tersebut tidak ditemukan atau belum diterbitkan.
                 </p>
 
                 <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-800 mb-8 text-left">
                   <p className="font-bold mb-1">Kemungkinan penyebab:</p>
                   <ul className="list-disc list-inside space-y-1 ml-1 opacity-80">
                     <li>ID Sertifikat salah ketik</li>
-                    <li>Dokumen belum disetujui</li>
+                    <li>Dokumen belum disetujui oleh petugas</li>
+                    <li>Sertifikat palsu atau kadaluarsa</li>
                   </ul>
                 </div>
 
@@ -209,7 +210,7 @@ export const VerificationPage: React.FC = () => {
                     <Search className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
                   </div>
                   <p className="text-xs text-slate-500">
-                    ID Sertifikat dapat ditemukan di dokumen PDF.
+                    ID Sertifikat dapat ditemukan di bagian atas dokumen PDF.
                   </p>
                 </div>
 
