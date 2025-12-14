@@ -4,7 +4,11 @@ import { PatientRequest, CertificateType } from "../types/index";
 import { format } from "date-fns";
 import { id as localeId } from 'date-fns/locale';
 
-export const generatePDF = async (request: PatientRequest) => {
+interface PDFGeneratorOptions {
+  returnBytes?: boolean;
+}
+
+export const generatePDF = async (request: PatientRequest, options: PDFGeneratorOptions = { returnBytes: false }): Promise<Uint8Array | void> => {
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([595.28, 841.89]); // A4 size
   const { width, height } = page.getSize();
@@ -141,6 +145,10 @@ export const generatePDF = async (request: PatientRequest) => {
   page.drawText(request.certificateId || "PENDING", { x: 55, y: footerY - 92, size: 9, font: fontBold });
 
   const pdfBytes = await pdfDoc.save();
+
+  if (options.returnBytes) {
+    return pdfBytes;
+  }
   
   // Trigger Download
   const blob = new Blob([pdfBytes], { type: 'application/pdf' });

@@ -27,6 +27,7 @@ export interface PatientRequest {
   validFrom?: string;
   validUntil?: string;
   certificateId?: string;
+  certificateUrl?: string; // URL to the PDF in Storage
   emailSent?: boolean;
 }
 

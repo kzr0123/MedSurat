@@ -1,25 +1,31 @@
 import { supabase } from './supabase';
 
 export const Auth = {
-  isAuthenticated: (): boolean => {
-    return localStorage.getItem('medsurat_auth') === 'true';
+  /**
+   * Checks if user is authenticated via Supabase Session
+   */
+  isAuthenticated: async (): Promise<boolean> => {
+    if (!supabase) return false;
+    const { data: { session } } = await supabase.auth.getSession();
+    return !!session;
   },
   
-  // Note: Login logic is now primarily handled in components/auth/Login.tsx to support async Supabase flow directly.
-  // This helper is kept for legacy mock support or simple checks.
-  login: (id: string, password: string): boolean => {
-    // Demo login fallback
-    if ((id === 'admin' || id === 'admin@medsurat.com') && password === 'password') {
-      localStorage.setItem('medsurat_auth', 'true');
-      return true;
-    }
-    return false;
-  },
-  
+  /**
+   * Logs out via Supabase
+   */
   logout: async () => {
-    localStorage.removeItem('medsurat_auth');
+    localStorage.removeItem('medsurat_auth'); // Cleanup legacy
     if (supabase) {
       await supabase.auth.signOut();
     }
+  },
+
+  /**
+   * Helper to get current user details
+   */
+  getUser: async () => {
+    if (!supabase) return null;
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
   }
 };

@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../lib/db';
-import { GeminiService } from '../lib/gemini';
+import { DeepSeekService } from '../lib/deepseek';
 import { generatePDF } from '../lib/pdfGenerator';
 import { EmailService } from '../lib/emailService';
 import { PatientRequest, RequestStatus, CertificateType } from '../types/index';
-import { ArrowLeft, Sparkles, Check, X, Printer, Mail, User, FileText, Calendar } from 'lucide-react';
+import { ArrowLeft, Sparkles, Check, X, Printer, Mail, User, FileText, Calendar, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
@@ -32,7 +32,7 @@ export const ProcessRequest: React.FC = () => {
   const handleAIDraft = async () => {
     if (!request) return;
     setGeneratingAI(true);
-    const draft = await GeminiService.draftMedicalNote(request.symptoms, request.type, request.fullName);
+    const draft = await DeepSeekService.draftMedicalNote(request.symptoms, request.type, request.fullName);
     setDoctorNotes(draft);
     setGeneratingAI(false);
   };
@@ -47,27 +47,44 @@ export const ProcessRequest: React.FC = () => {
 
     const certId = `MC-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
 
-    // 1. Update DB
-    await db.updateRequest(request.id, {
+    // 1. Prepare Data Object
+    const updatedRequestData: Partial<PatientRequest> = {
       status: RequestStatus.APPROVED,
       doctorNotes,
       validFrom: validFrom.toISOString(),
       validUntil: validUntil.toISOString(),
       certificateId: certId
-    });
+    };
 
-    // 2. Send Email
-    const emailSent = await EmailService.sendApprovalEmail(request.email, request.fullName, certId);
-    if (emailSent) {
-      await db.updateRequest(request.id, { emailSent: true });
+    try {
+      // 2. Generate PDF Bytes (Don't download yet)
+      const pdfBytes = await generatePDF({ ...request, ...updatedRequestData } as PatientRequest, { returnBytes: true });
+      
+      // 3. Upload to Supabase Storage (if available and pdfBytes exists)
+      if (pdfBytes && (pdfBytes instanceof Uint8Array)) {
+         await db.uploadCertificate(certId, pdfBytes);
+      }
+
+      // 4. Update DB
+      await db.updateRequest(request.id, updatedRequestData);
+
+      // 5. Send Email
+      const emailSent = await EmailService.sendApprovalEmail(request.email, request.fullName, certId);
+      if (emailSent) {
+        await db.updateRequest(request.id, { emailSent: true });
+      }
+
+      // 6. Refresh Local State
+      const updated = await db.getRequestById(request.id);
+      if (updated) setRequest(updated);
+
+      alert(`Permohonan Disetujui! Sertifikat telah dibuat dan diunggah.${emailSent ? ' Email telah dikirim ke pasien.' : ''}`);
+    } catch (error) {
+      console.error("Approval flow failed", error);
+      alert("Terjadi kesalahan saat memproses persetujuan.");
+    } finally {
+      setProcessing(false);
     }
-
-    // 3. Refresh Local State
-    const updated = await db.getRequestById(request.id);
-    if (updated) setRequest(updated);
-
-    setProcessing(false);
-    alert(`Permohonan Disetujui! Sertifikat telah dibuat.${emailSent ? ' Email telah dikirim ke pasien.' : ''}`);
   };
 
   const handleReject = async () => {
@@ -81,8 +98,10 @@ export const ProcessRequest: React.FC = () => {
     setProcessing(false);
   };
 
-  const handleDownloadPDF = () => {
-    if (request) generatePDF(request);
+  const handleDownloadPDF = async () => {
+    if (request) {
+       await generatePDF(request, { returnBytes: false });
+    }
   };
 
   if (!request) return <div className="p-8 text-center text-slate-500">Memuat data...</div>;
@@ -186,7 +205,7 @@ export const ProcessRequest: React.FC = () => {
                   className="flex items-center space-x-2 text-xs bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-all shadow-md shadow-purple-200 disabled:opacity-70"
                 >
                   <Sparkles className={`h-3 w-3 ${generatingAI ? 'animate-spin' : ''}`} />
-                  <span>{generatingAI ? 'Sedang menulis...' : 'Bantu Tulis dengan AI'}</span>
+                  <span>{generatingAI ? 'Sedang menulis (DeepSeek)...' : 'Bantu Tulis (DeepSeek)'}</span>
                 </button>
               )}
             </div>
@@ -237,7 +256,12 @@ export const ProcessRequest: React.FC = () => {
                   disabled={processing || !doctorNotes}
                   className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-4 rounded-xl font-bold flex items-center justify-center transition-all shadow-lg shadow-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {processing ? 'Memproses...' : (
+                  {processing ? (
+                    <>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                      Memproses...
+                    </>
+                  ) : (
                     <>
                       <Check className="h-5 w-5 mr-2" /> Setujui & Terbitkan Surat
                     </>

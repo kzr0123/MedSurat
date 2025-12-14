@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "react": "^19.2.3",
-    "@google/genai": "^1.33.0",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1",
     "lucide-react": "^0.561.0",
@@ -21,7 +20,8 @@
     "qrcode": "1.5.3",
     "pdf-lib": "1.17.1",
     "react-qr-code": "2.0.12",
-    "react-signature-canvas": "1.0.6"
+    "react-signature-canvas": "1.0.6",
+    "@google/genai": "^1.33.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

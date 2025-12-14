@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { Auth } from '../../lib/auth';
 
 export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [loading, setLoading] = useState(true);
@@ -11,7 +10,8 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
     const checkAuth = async () => {
       // 1. Fallback for Mock Mode (if Supabase is not configured)
       if (!supabase) {
-        setAuthenticated(Auth.isAuthenticated());
+        const isMockAuth = localStorage.getItem('medsurat_auth') === 'true';
+        setAuthenticated(isMockAuth);
         setLoading(false);
         return;
       }

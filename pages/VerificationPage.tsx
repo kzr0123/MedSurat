@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { db } from '../lib/db';
 import { PatientRequest } from '../types/index';
-import { ShieldCheck, AlertCircle, CheckCircle, Loader2, ArrowLeft, Search, Calendar, User, FileText } from 'lucide-react';
+import { ShieldCheck, AlertCircle, CheckCircle, Loader2, ArrowLeft, Search, Calendar, User, FileText, ExternalLink } from 'lucide-react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 
@@ -23,8 +23,8 @@ export const VerificationPage: React.FC = () => {
 
   const handleVerify = async (id: string) => {
     setStatus('loading');
-    // Simulate network delay for better UX if instantaneous
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Simulate slight network delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     try {
       const data = await db.verifyCertificate(id);
@@ -51,7 +51,6 @@ export const VerificationPage: React.FC = () => {
     setStatus('idle');
     setResult(null);
     setInputId('');
-    // Remove query params to allow new search
     window.history.replaceState({}, '', window.location.pathname);
   };
 
@@ -134,10 +133,23 @@ export const VerificationPage: React.FC = () => {
 
                   <div className="pt-4 mt-2 border-t border-slate-200">
                     <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Nomor Sertifikat</span>
-                    <span className="font-mono text-sm bg-white border border-slate-200 px-2 py-1 rounded text-slate-700 block text-center">
-                      {result.certificateId}
+                    <span className="font-mono text-sm bg-white border border-slate-200 px-2 py-1 rounded text-slate-700 block text-center break-all">
+                      {result.certificateId || result.id}
                     </span>
                   </div>
+
+                  {/* View Original PDF Link */}
+                  {result.certificateUrl && (
+                    <a 
+                      href={result.certificateUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-center w-full px-4 py-2 mt-4 bg-blue-50 text-blue-700 rounded-xl text-sm font-bold border border-blue-200 hover:bg-blue-100 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      Lihat Dokumen Asli (PDF)
+                    </a>
+                  )}
                 </div>
 
                 <button 
@@ -158,15 +170,14 @@ export const VerificationPage: React.FC = () => {
                 
                 <h2 className="text-2xl font-bold text-red-700 mb-2">DOKUMEN TIDAK VALID</h2>
                 <p className="text-slate-500 mb-8">
-                  Dokumen dengan ID tersebut tidak ditemukan atau telah ditarik kembali oleh pihak klinik.
+                  Dokumen dengan ID tersebut tidak ditemukan.
                 </p>
 
                 <div className="bg-red-50 border border-red-100 rounded-xl p-4 text-sm text-red-800 mb-8 text-left">
                   <p className="font-bold mb-1">Kemungkinan penyebab:</p>
                   <ul className="list-disc list-inside space-y-1 ml-1 opacity-80">
                     <li>ID Sertifikat salah ketik</li>
-                    <li>Dokumen palsu / hasil editan</li>
-                    <li>Masa berlaku dokumen telah habis</li>
+                    <li>Dokumen belum disetujui</li>
                   </ul>
                 </div>
 
@@ -179,7 +190,7 @@ export const VerificationPage: React.FC = () => {
               </div>
             )}
 
-            {/* IDLE STATE (MANUAL INPUT) */}
+            {/* IDLE STATE */}
             {status === 'idle' && (
               <form onSubmit={handleManualSubmit} className="space-y-6">
                 <div className="space-y-2">
@@ -191,14 +202,14 @@ export const VerificationPage: React.FC = () => {
                       id="certId"
                       type="text"
                       className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-blue-500 transition-all font-mono placeholder:font-sans"
-                      placeholder="Contoh: MC-2024-1234"
+                      placeholder="Contoh: MC-2024-..."
                       value={inputId}
                       onChange={(e) => setInputId(e.target.value)}
                     />
                     <Search className="absolute left-3 top-3.5 h-5 w-5 text-slate-400" />
                   </div>
                   <p className="text-xs text-slate-500">
-                    ID Sertifikat dapat ditemukan di bagian atas atau bawah dokumen fisik/digital.
+                    ID Sertifikat dapat ditemukan di dokumen PDF.
                   </p>
                 </div>
 
